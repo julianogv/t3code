@@ -3676,6 +3676,16 @@ export default function ChatView(props: ChatViewProps) {
                               contextWindowEntries={serverVisibleTurnItems}
                               contextWindowLiveUsage={activeThreadLiveTokenUsage}
                               contextWindowProviderThread={activeProviderThread}
+                              statusLineContext={
+                                gitStatusCwd === null
+                                  ? null
+                                  : {
+                                      cwd: gitStatusCwd,
+                                      projectDir: activeProject?.workspaceRoot ?? null,
+                                      sessionId:
+                                        activeProviderThread?.nativeThreadRef?.nativeId ?? null,
+                                    }
+                              }
                               compactThreadUnavailable={compactThreadUnavailable}
                               compactDisabled={compactDisabled}
                               compactDisabledReason={compactDisabledReason}

@@ -24,6 +24,8 @@ export interface ProcessRunInput {
   readonly timeout?: Duration.Input | undefined;
   readonly env?: NodeJS.ProcessEnv | undefined;
   readonly stdin?: string | undefined;
+  /** The child may exit without reading stdin; a broken pipe then is not a failure. */
+  readonly stdinOptional?: boolean | undefined;
   /** Receives every stdout chunk, including bytes beyond the buffered output limit. */
   readonly onStdoutChunk?: ((chunk: Uint8Array) => void) | undefined;
   readonly maxOutputBytes?: number | undefined;
@@ -327,6 +329,7 @@ const runProcessCore = Effect.fn("processRunner.runProcessCore")(function* (
                 cause,
               }),
           ),
+          input.stdinOptional ? Effect.ignore : (effect) => effect,
         );
 
   const [stdout, stderr] = yield* Effect.all(
