@@ -252,6 +252,7 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarGlobalTerminals } from "./sidebar/SidebarGlobalTerminals";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
@@ -3205,6 +3206,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         }
       >
         <SidebarGroup className="flex-1" role="presentation">
+          {isSearchingThreads ? null : <SidebarGlobalTerminals />}
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
               <TooltipProvider

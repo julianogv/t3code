@@ -21,6 +21,7 @@ import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
+import { Route as ChatTerminalsTerminalIdRouteImport } from './routes/_chat.terminals.$terminalId'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
 import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
 import { Route as ChatSettingsStorageRouteImport } from './routes/_chat.settings.storage'
@@ -107,6 +108,11 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
 const ChatNewRoute = ChatNewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatTerminalsTerminalIdRoute = ChatTerminalsTerminalIdRouteImport.update({
+  id: '/terminals/$terminalId',
+  path: '/terminals/$terminalId',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatSettingsWorktreesRoute = ChatSettingsWorktreesRouteImport.update({
@@ -295,6 +301,7 @@ export interface FileRoutesByFullPath {
   '/settings/storage': typeof ChatSettingsStorageRoute
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
+  '/terminals/$terminalId': typeof ChatTerminalsTerminalIdRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -336,6 +343,7 @@ export interface FileRoutesByTo {
   '/settings/storage': typeof ChatSettingsStorageRoute
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
+  '/terminals/$terminalId': typeof ChatTerminalsTerminalIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -379,6 +387,7 @@ export interface FileRoutesById {
   '/_chat/settings/storage': typeof ChatSettingsStorageRoute
   '/_chat/settings/threads': typeof ChatSettingsThreadsRoute
   '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
+  '/_chat/terminals/$terminalId': typeof ChatTerminalsTerminalIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -422,6 +431,7 @@ export interface FileRouteTypes {
     | '/settings/storage'
     | '/settings/threads'
     | '/settings/worktrees'
+    | '/terminals/$terminalId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -463,6 +473,7 @@ export interface FileRouteTypes {
     | '/settings/storage'
     | '/settings/threads'
     | '/settings/worktrees'
+    | '/terminals/$terminalId'
   id:
     | '__root__'
     | '/_chat'
@@ -505,6 +516,7 @@ export interface FileRouteTypes {
     | '/_chat/settings/storage'
     | '/_chat/settings/threads'
     | '/_chat/settings/worktrees'
+    | '/_chat/terminals/$terminalId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -601,6 +613,13 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof ChatNewRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/terminals/$terminalId': {
+      id: '/_chat/terminals/$terminalId'
+      path: '/terminals/$terminalId'
+      fullPath: '/terminals/$terminalId'
+      preLoaderRoute: typeof ChatTerminalsTerminalIdRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/settings/worktrees': {
@@ -872,6 +891,7 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
+  ChatTerminalsTerminalIdRoute: typeof ChatTerminalsTerminalIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -882,6 +902,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
+  ChatTerminalsTerminalIdRoute: ChatTerminalsTerminalIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
