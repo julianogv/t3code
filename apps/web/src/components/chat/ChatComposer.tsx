@@ -252,6 +252,8 @@ import {
   type ComposerDispatchMode,
 } from "@t3tools/client-runtime/state/composer-dispatch";
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import { ClaudeStatusLine } from "./ClaudeStatusLine";
+import { buildStatusLineRenderInput, resolveStatusLineEffort } from "./ClaudeStatusLine.logic";
 import {
   resolveProviderSkillsForCwd,
   resolveProviderSlashCommandsForCwd,
@@ -426,6 +428,11 @@ export interface ChatComposerProps {
   activeProjectId: ProjectId | null;
 
   activeContextWindow: ContextWindowSnapshot | null;
+  statusLineContext: {
+    readonly cwd: string;
+    readonly projectDir: string | null;
+    readonly sessionId: string | null;
+  } | null;
   compactThreadUnavailable: boolean;
   compactDisabled: boolean;
   compactDisabledReason: string | null;
@@ -550,6 +557,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     reportedModelSelection,
     activeProjectId,
     activeContextWindow,
+    statusLineContext,
     compactThreadUnavailable,
     compactDisabled,
     compactDisabledReason,
@@ -972,6 +980,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadModelSelection,
     modelOptionsByInstance,
   );
+  const statusLineInput = buildStatusLineRenderInput({
+    cwd: statusLineContext?.cwd ?? null,
+    projectDir: statusLineContext?.projectDir ?? null,
+    sessionId: statusLineContext?.sessionId ?? null,
+    modelId: activeThreadModelSelection?.model,
+    modelDisplayName: activeThreadModelDisplayName,
+    effort: resolveStatusLineEffort(
+      activeThreadModelSelection,
+      selectedProviderStatus?.models ?? [],
+      reportedModelSelection,
+    ),
+    contextWindow: activeContextWindow,
+  });
   const reserveContextWindowMeter = shouldReserveContextWindowMeter({
     meterEnabled: settings.contextWindowMeterEnabled,
     detailLoading: props.threadSyncPhase === "loading",
@@ -3531,6 +3552,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           </div>
         </ComposerSurface.Main>
       </div>
+      <ClaudeStatusLine environmentId={environmentId} input={statusLineInput} />
     </form>
   );
 });
