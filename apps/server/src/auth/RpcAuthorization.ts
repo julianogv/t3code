@@ -147,7 +147,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.projectsListEntries]: AuthFilesystemReadScope,
   [WS_METHODS.projectsListIgnoredFiles]: AuthFilesystemReadScope,
   [WS_METHODS.projectsReadFile]: AuthFilesystemReadScope,
-  [WS_METHODS.statusLineRender]: AuthFilesystemReadScope,
+  // Runs a shell command, so it needs the same scope as opening a terminal.
+  [WS_METHODS.statusLineRender]: AuthTerminalOperateScope,
   [WS_METHODS.projectsSearchContents]: AuthFilesystemReadScope,
   [WS_METHODS.projectsSearchEntries]: AuthFilesystemReadScope,
   [WS_METHODS.projectsWriteFile]: AuthFilesystemWriteScope,
