@@ -28,6 +28,14 @@ const input = (cwd: string): StatusLineRenderInput => ({
   costUsd: 1.25,
 });
 
+// Lives outside Effect code because the service reads the real env var, which a Config can't stand in for.
+const setClaudeConfigDir = (value: string | undefined): string | undefined => {
+  const previous = process.env.CLAUDE_CONFIG_DIR;
+  if (value === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+  else process.env.CLAUDE_CONFIG_DIR = value;
+  return previous;
+};
+
 // The service reads CLAUDE_CONFIG_DIR from process.env, like the Claude CLI it stands in for.
 const withClaudeConfig = (settings: string | null, script: string | null) =>
   Effect.gen(function* () {
@@ -44,14 +52,8 @@ const withClaudeConfig = (settings: string | null, script: string | null) =>
         settings.replaceAll("$ROOT", root),
       );
     }
-    const previous = process.env.CLAUDE_CONFIG_DIR;
-    process.env.CLAUDE_CONFIG_DIR = root;
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-        else process.env.CLAUDE_CONFIG_DIR = previous;
-      }),
-    );
+    const previous = setClaudeConfigDir(root);
+    yield* Effect.addFinalizer(() => Effect.sync(() => setClaudeConfigDir(previous)));
     return root;
   });
 
