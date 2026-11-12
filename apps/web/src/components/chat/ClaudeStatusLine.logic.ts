@@ -1,5 +1,6 @@
 import type {
   ModelSelection,
+  ProviderInstanceId,
   ServerProviderModel,
   StatusLineRenderInput,
 } from "@t3tools/contracts";
@@ -148,6 +149,7 @@ export function resolveStatusLineEffort(
 
 export function buildStatusLineRenderInput(input: {
   readonly cwd: string | null;
+  readonly providerInstanceId: ProviderInstanceId | undefined;
   readonly projectDir: string | null;
   readonly sessionId: string | null;
   readonly modelId: string | null | undefined;
@@ -161,6 +163,7 @@ export function buildStatusLineRenderInput(input: {
   const context = input.contextWindow;
   return {
     cwd,
+    ...(input.providerInstanceId ? { providerInstanceId: input.providerInstanceId } : {}),
     ...(input.projectDir ? { projectDir: input.projectDir } : {}),
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     model: { id: modelId, displayName: input.modelDisplayName?.trim() || modelId },

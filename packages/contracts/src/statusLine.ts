@@ -1,10 +1,13 @@
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderInstanceId } from "./providerInstance.ts";
 
 /** Thread facts the server maps onto Claude Code's statusLine stdin JSON. */
 export const StatusLineRenderInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
+  /** Picks which Claude home's settings.json supplies `statusLine.command`. */
+  providerInstanceId: Schema.optional(ProviderInstanceId),
   projectDir: Schema.optional(TrimmedNonEmptyString),
   sessionId: Schema.optional(TrimmedNonEmptyString),
   model: Schema.Struct({

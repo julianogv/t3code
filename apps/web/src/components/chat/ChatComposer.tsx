@@ -993,6 +993,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : null;
   const statusLineInput = buildStatusLineRenderInput({
     cwd: statusLineContext?.cwd ?? null,
+    providerInstanceId: activeThreadModelSelection?.instanceId,
     projectDir: statusLineContext?.projectDir ?? null,
     sessionId: statusLineContext?.sessionId ?? null,
     modelId: activeThreadModelSelection?.model,

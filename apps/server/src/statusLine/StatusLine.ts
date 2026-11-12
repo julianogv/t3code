@@ -1,4 +1,9 @@
-import type { StatusLineRenderInput, StatusLineRenderResult } from "@t3tools/contracts";
+import {
+  ClaudeSettings,
+  type ProviderInstanceId,
+  type StatusLineRenderInput,
+  type StatusLineRenderResult,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -7,9 +12,11 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import * as ServerSettings from "../serverSettings.ts";
 
 const ClaudeStatusLineSettings = Schema.Struct({
   statusLine: Schema.optional(
@@ -22,6 +29,7 @@ const ClaudeStatusLineSettings = Schema.Struct({
 const decodeClaudeSettings = Schema.decodeUnknownOption(
   Schema.fromJsonString(ClaudeStatusLineSettings),
 );
+const decodeClaudeInstanceSettings = Schema.decodeUnknownOption(ClaudeSettings);
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 // Claude Code allows 300ms per refresh; scripts that probe local services need a little more.
@@ -81,11 +89,29 @@ const make = Effect.gen(function* StatusLineMake() {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
 
   // Only user-level settings: a project's .claude/settings.json would let any opened repo pick
   // the command this RPC runs.
-  const readCommand = Effect.fn("StatusLine.readCommand")(function* () {
-    const claudeHome = yield* resolveClaudeHomePath({ homePath: "" }, process.env).pipe(
+  const readCommand = Effect.fn("StatusLine.readCommand")(function* (
+    instanceId: ProviderInstanceId | undefined,
+  ) {
+    const settings = yield* serverSettings.getSettings.pipe(Effect.option);
+    const instance =
+      instanceId !== undefined &&
+      Option.isSome(settings) &&
+      Object.hasOwn(settings.value.providerInstances, instanceId)
+        ? settings.value.providerInstances[instanceId]
+        : undefined;
+    const claudeInstance = instance?.driver === "claudeAgent" ? instance : undefined;
+    const config = decodeClaudeInstanceSettings(claudeInstance?.config ?? {}).pipe(
+      Option.getOrElse(() => ({ homePath: "" })),
+    );
+    const environment = yield* mergeProviderInstanceEnvironment(
+      claudeInstance?.environment,
+      process.env,
+    );
+    const claudeHome = yield* resolveClaudeHomePath(config, environment).pipe(
       Effect.provideService(Path.Path, path),
     );
     const raw = yield* fileSystem
@@ -98,7 +124,7 @@ const make = Effect.gen(function* StatusLineMake() {
   });
 
   const render = Effect.fn("StatusLine.render")(function* (input: StatusLineRenderInput) {
-    const command = yield* readCommand();
+    const command = yield* readCommand(input.providerInstanceId);
     if (Option.isNone(command)) {
       return { configured: false, lines: [] } satisfies StatusLineRenderResult;
     }

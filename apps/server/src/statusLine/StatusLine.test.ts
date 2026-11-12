@@ -1,6 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { StatusLineRenderInput } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type StatusLineRenderInput,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -8,11 +12,15 @@ import * as Path from "effect/Path";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as StatusLine from "./StatusLine.ts";
+import * as ServerSettings from "../serverSettings.ts";
 
-const TestLayer = StatusLine.layer.pipe(
-  Layer.provide(ProcessRunner.layer),
-  Layer.provideMerge(NodeServices.layer),
-);
+const makeTestLayer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
+  StatusLine.layer.pipe(
+    Layer.provide(ProcessRunner.layer),
+    Layer.provide(ServerSettings.layerTest(settings)),
+    Layer.provideMerge(NodeServices.layer),
+  );
+const TestLayer = makeTestLayer();
 
 const input = (cwd: string): StatusLineRenderInput => ({
   cwd,
@@ -112,5 +120,45 @@ describe("StatusLine.render", () => {
         "Expected the command's stderr as the error",
       );
     }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.effect("reads statusLine from the thread's Claude instance home, not CLAUDE_CONFIG_DIR", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const instanceHome = yield* fs.makeTempDirectoryScoped({ prefix: "t3-status-line-home-" });
+      yield* fs.writeFileString(
+        path.join(instanceHome, "settings.json"),
+        `{"statusLine":{"type":"command","command":"echo instance home"}}`,
+      );
+      const root = yield* withClaudeConfig(
+        `{"statusLine":{"type":"command","command":"echo default home"}}`,
+        null,
+      );
+      const instanceId = ProviderInstanceId.make("claude-personal");
+      const result = yield* Effect.gen(function* () {
+        return yield* (yield* StatusLine.StatusLine).render({
+          ...input(root),
+          providerInstanceId: instanceId,
+        });
+      }).pipe(
+        Effect.provide(
+          makeTestLayer({
+            providerInstances: {
+              [instanceId]: {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                config: { homePath: instanceHome },
+              },
+            },
+          }),
+        ),
+      );
+
+      assert.deepStrictEqual(
+        result,
+        { configured: true, lines: ["instance home"] },
+        "Expected the command from the instance's homePath settings.json",
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
