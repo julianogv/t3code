@@ -1,6 +1,7 @@
 import {
   ClaudeSettings,
   type ProviderInstanceId,
+  type ServerProviderUsageLimits,
   type StatusLineRenderInput,
   type StatusLineRenderResult,
 } from "@t3tools/contracts";
@@ -16,6 +17,7 @@ import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
 const ClaudeStatusLineSettings = Schema.Struct({
@@ -44,7 +46,34 @@ export class StatusLine extends Context.Service<
 >()("t3/statusLine/StatusLine") {}
 
 /** Same shape Claude Code pipes to `statusLine.command`, so existing scripts run unchanged. */
-const toClaudeStatusLinePayload = (input: StatusLineRenderInput) => {
+// Claude Code reports `resets_at` as epoch seconds; T3 keeps the window as an ISO string.
+const toRateLimitWindow = (limits: ServerProviderUsageLimits | undefined, id: string) => {
+  const window = limits?.windows.find((candidate) => candidate.id === id);
+  if (window === undefined) return undefined;
+  const resetsAt = window.resetsAt === undefined ? undefined : Date.parse(window.resetsAt);
+  return {
+    used_percentage: window.usedPercent,
+    ...(resetsAt === undefined || Number.isNaN(resetsAt)
+      ? {}
+      : { resets_at: Math.floor(resetsAt / 1000) }),
+  };
+};
+
+const toRateLimits = (limits: ServerProviderUsageLimits | undefined) => {
+  const fiveHour = toRateLimitWindow(limits, "five_hour");
+  const sevenDay = toRateLimitWindow(limits, "seven_day");
+  if (fiveHour === undefined && sevenDay === undefined) return undefined;
+  return {
+    ...(fiveHour ? { five_hour: fiveHour } : {}),
+    ...(sevenDay ? { seven_day: sevenDay } : {}),
+  };
+};
+
+const toClaudeStatusLinePayload = (
+  input: StatusLineRenderInput,
+  usageLimits: ServerProviderUsageLimits | undefined,
+) => {
+  const rateLimits = toRateLimits(usageLimits);
   const contextWindow = input.contextWindow;
   const usedPercentage =
     contextWindow?.usedPercentage ??
@@ -81,6 +110,7 @@ const toClaudeStatusLinePayload = (input: StatusLineRenderInput) => {
             },
     },
     exceeds_200k_tokens: (contextWindow?.usedTokens ?? 0) > 200_000,
+    ...(rateLimits ? { rate_limits: rateLimits } : {}),
   };
 };
 
@@ -90,6 +120,17 @@ const make = Effect.gen(function* StatusLineMake() {
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const providerRegistry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+
+  const readUsageLimits = Effect.fn("StatusLine.readUsageLimits")(function* (
+    instanceId: ProviderInstanceId | undefined,
+  ) {
+    if (instanceId === undefined) return undefined;
+    const instance = yield* providerRegistry.getInstance(instanceId);
+    if (instance === undefined) return undefined;
+    const snapshot = yield* instance.snapshot.getSnapshot;
+    return snapshot.usageLimits;
+  });
 
   // Only user-level settings: a project's .claude/settings.json would let any opened repo pick
   // the command this RPC runs.
@@ -132,11 +173,12 @@ const make = Effect.gen(function* StatusLineMake() {
       platform === "win32"
         ? { command: "cmd.exe", args: ["/d", "/s", "/c", command.value] }
         : { command: "/bin/sh", args: ["-c", command.value] };
+    const usageLimits = yield* readUsageLimits(input.providerInstanceId);
     return yield* processRunner
       .run({
         ...shell,
         cwd: input.cwd,
-        stdin: encodeJson(toClaudeStatusLinePayload(input)),
+        stdin: encodeJson(toClaudeStatusLinePayload(input, usageLimits)),
         stdinOptional: true,
         timeout: STATUS_LINE_TIMEOUT,
         timeoutBehavior: "timedOutResult",

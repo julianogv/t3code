@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   ProviderDriverKind,
   ProviderInstanceId,
+  type ServerProvider,
   type StatusLineRenderInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -10,14 +11,32 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
+import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+
 import * as ProcessRunner from "../processRunner.ts";
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as StatusLine from "./StatusLine.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
-const makeTestLayer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
+const makeTestLayer = (
+  settings: Parameters<typeof ServerSettings.layerTest>[0] = {},
+  usageLimits?: ServerProvider["usageLimits"],
+) =>
   StatusLine.layer.pipe(
     Layer.provide(ProcessRunner.layer),
     Layer.provide(ServerSettings.layerTest(settings)),
+    Layer.provide(
+      Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+        getInstance: () =>
+          Effect.succeed(
+            usageLimits === undefined
+              ? undefined
+              : ({
+                  snapshot: { getSnapshot: Effect.succeed({ usageLimits } as ServerProvider) },
+                } as ProviderInstance),
+          ),
+      }),
+    ),
     Layer.provideMerge(NodeServices.layer),
   );
 const TestLayer = makeTestLayer();
@@ -122,14 +141,14 @@ describe("StatusLine.render", () => {
     }).pipe(Effect.provide(TestLayer)),
   );
 
-  it.effect("reads statusLine from the thread's Claude instance home, not CLAUDE_CONFIG_DIR", () =>
+  it.effect("reads the thread's Claude instance home and passes its rate limits", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const instanceHome = yield* fs.makeTempDirectoryScoped({ prefix: "t3-status-line-home-" });
       yield* fs.writeFileString(
         path.join(instanceHome, "settings.json"),
-        `{"statusLine":{"type":"command","command":"echo instance home"}}`,
+        `{"statusLine":{"type":"command","command":"echo instance home; cat"}}`,
       );
       const root = yield* withClaudeConfig(
         `{"statusLine":{"type":"command","command":"echo default home"}}`,
@@ -143,21 +162,44 @@ describe("StatusLine.render", () => {
         });
       }).pipe(
         Effect.provide(
-          makeTestLayer({
-            providerInstances: {
-              [instanceId]: {
-                driver: ProviderDriverKind.make("claudeAgent"),
-                config: { homePath: instanceHome },
+          makeTestLayer(
+            {
+              providerInstances: {
+                [instanceId]: {
+                  driver: ProviderDriverKind.make("claudeAgent"),
+                  config: { homePath: instanceHome },
+                },
               },
             },
-          }),
+            {
+              checkedAt: "2026-11-12T10:00:00.000Z",
+              windows: [
+                {
+                  id: "five_hour",
+                  kind: "session",
+                  label: "Session",
+                  usedPercent: 42,
+                  resetsAt: "2026-11-12T15:00:00.000Z",
+                },
+                { id: "seven_day", kind: "weekly", label: "Weekly", usedPercent: 7 },
+              ],
+            },
+          ),
         ),
       );
 
       assert.deepStrictEqual(
-        result,
-        { configured: true, lines: ["instance home"] },
+        result.lines[0],
+        "instance home",
         "Expected the command from the instance's homePath settings.json",
+      );
+      assert.deepStrictEqual(
+        JSON.parse(result.lines[1] ?? "{}").rate_limits,
+        {
+          five_hour: { used_percentage: 42, resets_at: 1_794_495_600 },
+          seven_day: { used_percentage: 7 },
+        },
+        "Expected the instance's usage windows in Claude Code's rate_limits shape",
       );
     }).pipe(Effect.provide(NodeServices.layer)),
   );
