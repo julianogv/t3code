@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { type GlobalTerminalDefinition, useGlobalTerminalsStore } from "../../globalTerminalsStore";
@@ -12,22 +12,32 @@ import { useSidebar } from "../ui/sidebar";
 import { GlobalTerminalEditorDialog } from "../terminal/GlobalTerminalEditorDialog";
 import { useGlobalTerminalActions } from "../terminal/useGlobalTerminalActions";
 import {
-  type GlobalTerminalRunState,
+  type GlobalTerminalCommandPids,
+  type GlobalTerminalIndicator,
+  globalTerminalIndicator,
+  isEndedGlobalTerminalIndicator,
+  trackGlobalTerminalCommandPids,
+} from "../terminal/globalTerminalIndicator.logic";
+import {
   globalTerminalRunState,
   useGlobalTerminalSummaries,
 } from "../terminal/useGlobalTerminalSummaries";
 
-const RUN_STATE_DOT: Record<GlobalTerminalRunState, string> = {
+const RUN_STATE_DOT: Record<GlobalTerminalIndicator, string> = {
   running: "bg-success",
+  finished: "bg-destructive",
   exited: "bg-destructive",
   stopped: "bg-sidebar-muted-foreground/40",
 };
 
-const RUN_STATE_LABEL: Record<GlobalTerminalRunState, string> = {
+const RUN_STATE_LABEL: Record<GlobalTerminalIndicator, string> = {
   running: "Running",
+  finished: "Command finished",
   exited: "Exited",
   stopped: "Not running",
 };
+
+const NO_COMMAND_PIDS: GlobalTerminalCommandPids = new Map();
 
 // Per page load, so a terminal the user stopped is not started again behind their back.
 const autostartAttempted = new Set<string>();
@@ -48,6 +58,18 @@ export const SidebarGlobalTerminals = memo(function SidebarGlobalTerminals() {
   });
   const [creating, setCreating] = useState(false);
   const actions = useGlobalTerminalActions(environmentId);
+  const [commandPids, setCommandPids] = useState(NO_COMMAND_PIDS);
+  if (summaries !== null) {
+    const nextCommandPids = trackGlobalTerminalCommandPids(commandPids, summaries);
+    if (nextCommandPids !== commandPids) setCommandPids(nextCommandPids);
+  }
+  const indicatorFor = (terminalId: string) =>
+    globalTerminalIndicator(summaries?.get(terminalId), commandPids.get(terminalId));
+  const endedTerminalIds = terminals
+    .filter((terminal) => isEndedGlobalTerminalIndicator(indicatorFor(terminal.id)))
+    .map((terminal) => terminal.id)
+    .join("\n");
+  const previousEndedTerminalIds = useRef<ReadonlySet<string> | null>(null);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts autostart terminals on the server once its first terminal snapshot shows they are not running
   useEffect(() => {
@@ -62,10 +84,22 @@ export const SidebarGlobalTerminals = memo(function SidebarGlobalTerminals() {
     }
   }, [actions, summaries, terminals]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- expands the persisted section when a server snapshot shows a terminal newly ended
+  useEffect(() => {
+    if (summaries === null) return;
+    const ended = new Set(endedTerminalIds.length > 0 ? endedTerminalIds.split("\n") : []);
+    const previous = previousEndedTerminalIds.current;
+    previousEndedTerminalIds.current = ended;
+    // The first snapshot only records what had already ended before this page loaded.
+    if (previous !== null && [...ended].some((terminalId) => !previous.has(terminalId))) {
+      setCollapsed(false);
+    }
+  }, [endedTerminalIds, setCollapsed, summaries]);
+
   if (environmentId === null) return null;
 
   const runningCount = terminals.filter(
-    (terminal) => globalTerminalRunState(summaries?.get(terminal.id)) === "running",
+    (terminal) => indicatorFor(terminal.id) === "running",
   ).length;
 
   const openTerminal = (terminal: GlobalTerminalDefinition) => {
@@ -113,7 +147,7 @@ export const SidebarGlobalTerminals = memo(function SidebarGlobalTerminals() {
       ) : (
         <ul className="flex flex-col gap-px">
           {terminals.map((terminal) => {
-            const runState = globalTerminalRunState(summaries?.get(terminal.id));
+            const runState = indicatorFor(terminal.id);
             const active = activeTerminalId === terminal.id;
             return (
               <li key={terminal.id}>
