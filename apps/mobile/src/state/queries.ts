@@ -16,6 +16,7 @@ import type {
   OrchestrationV2ProjectedTurnItem,
   ProjectId,
   ThreadPullRequestLink,
+  VcsListRefsInput,
   VcsListRefsResult,
   VcsRef,
 } from "@t3tools/contracts";
@@ -42,6 +43,7 @@ import { orchestrationEnvironment } from "./orchestration";
 import { olderSettledThreads, threadFamilies } from "./threads";
 import { projectEnvironment } from "./projects";
 import { useEnvironmentQuery } from "./query";
+import { msg, useMessages } from "gt-react-native";
 import { vcsEnvironment } from "./vcs";
 import { composerPullRequests } from "./pull-requests";
 import {
@@ -304,11 +306,15 @@ export function useBranches(input: {
   );
 }
 
-export function usePaginatedBranches(target: VcsRefTarget) {
+export function usePaginatedBranches(
+  target: VcsRefTarget & { readonly refKind?: VcsListRefsInput["refKind"] },
+) {
+  const resolve = useMessages();
   const query = target.query?.trim() ?? "";
+  const { refKind } = target;
   const targetKey =
     target.environmentId !== null && target.cwd !== null
-      ? JSON.stringify([target.environmentId, target.cwd, query])
+      ? JSON.stringify([target.environmentId, target.cwd, query, refKind])
       : null;
   const [pagination, setPagination] = useState<{
     readonly targetKey: string | null;
@@ -328,12 +334,13 @@ export function usePaginatedBranches(target: VcsRefTarget) {
                 cwd: target.cwd!,
                 ...(query.length > 0 ? { query } : {}),
                 ...(cursor === undefined ? {} : { cursor }),
+                ...(refKind === undefined ? {} : { refKind }),
                 limit: VCS_REF_LIST_LIMIT,
               },
             }),
           )
         : [],
-    [target.environmentId, target.cwd, query, cursors],
+    [target.environmentId, target.cwd, query, refKind, cursors],
   );
   const pagesAtom = useMemo(
     () =>
@@ -377,7 +384,7 @@ export function usePaginatedBranches(target: VcsRefTarget) {
           const cause = Cause.squash(failed.cause);
           return cause instanceof Error && cause.message.trim().length > 0
             ? cause.message
-            : "Failed to load refs.";
+            : resolve(msg("Failed to load refs."));
         })()
       : null;
   const refresh = () => {
@@ -412,6 +419,7 @@ export function usePaginatedBranches(target: VcsRefTarget) {
 }
 
 export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+  const resolve = useMessages();
   const query = normalizeComposerPathSearchQuery(target.query);
   const normalizedTarget = { environmentId: target.environmentId, cwd: target.cwd, query };
   const debouncedTarget = useDebouncedValue(normalizedTarget, COMPOSER_PATH_SEARCH_DEBOUNCE_MS);
@@ -421,12 +429,15 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
       : environmentSession.sessionStateAtom(debouncedTarget.environmentId),
   );
   const fileEnvironment = useEnvironmentPresentation(debouncedTarget.environmentId);
-  const fileAccess = resolveFilesystemReadAccess({
-    isCatalogReady: fileEnvironment.isReady,
-    connection: fileEnvironment.presentation?.connection ?? null,
-    session: fileAccessSession.data,
-    sessionError: fileAccessSession.error,
-  });
+  const fileAccess = resolveFilesystemReadAccess(
+    {
+      isCatalogReady: fileEnvironment.isReady,
+      connection: fileEnvironment.presentation?.connection ?? null,
+      session: fileAccessSession.data,
+      sessionError: fileAccessSession.error,
+    },
+    resolve,
+  );
   const { canReadFiles } = fileAccess;
   const searchTarget =
     debouncedTarget.environmentId !== null &&
@@ -457,7 +468,7 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
         ? null
         : canReadFiles
           ? result.error
-          : (fileAccess.error ?? "This connection cannot search host files."),
+          : (fileAccess.error ?? resolve(msg("This connection cannot search host files."))),
     isPending:
       !isSameCheckout ||
       normalizedTarget.query !== debouncedTarget.query ||
